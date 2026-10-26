@@ -9,6 +9,9 @@ description = "Small FFmpeg-powered scripts to automate common video edits"
 requires-python = ">=3.9"
 readme = "README.md"
 
+[project.optional-dependencies]
+captions = ["faster-whisper>=1.0"]
+
 [project.scripts]
 vedit = "vedit.cli:main"
 

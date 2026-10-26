@@ -4,7 +4,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from vedit.ffmpeg import has_audio, run
+from vedit import captions
+from vedit.ffmpeg import duration, has_audio, run, video_size
 
 H264 = ["-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p"]
 AAC = ["-c:a", "aac", "-b:a", "192k"]
@@ -123,3 +124,58 @@ def speed(src, dst, factor, dry_run=False):
 def thumbnail(src, dst, at="1", dry_run=False):
     """Save a single frame as an image."""
     return run(["-ss", str(at), "-i", str(src), "-frames:v", "1", "-q:v", "2", str(dst)], dry_run)
+
+
+def cut_segments(src, dst, keep=None, remove=None, dry_run=False):
+    """Keep several (start, end) ranges and join them, or drop ranges and keep the rest.
+
+    Give exactly one of keep / remove, each a list of (start, end) pairs (seconds or HH:MM:SS).
+    """
+    if bool(keep) == bool(remove):
+        raise ValueError("give exactly one of keep or remove")
+    if remove:
+        total, t, keep = duration(src), 0.0, []
+        for a, b in sorted((captions.parse_time(a), captions.parse_time(b)) for a, b in remove):
+            if a > t:
+                keep.append((t, a))
+            t = max(t, b)
+        if t < total:
+            keep.append((t, total))
+        if not keep:
+            raise ValueError("nothing left after removing those ranges")
+    segs = [(captions.parse_time(a), captions.parse_time(b)) for a, b in keep]
+    audio = dry_run or has_audio(src)
+    parts = []
+    for i, (a, b) in enumerate(segs):
+        parts.append(f"[0:v]trim=start={a}:end={b},setpts=PTS-STARTPTS[v{i}]")
+        if audio:
+            parts.append(f"[0:a]atrim=start={a}:end={b},asetpts=PTS-STARTPTS[a{i}]")
+    n = len(segs)
+    inputs = "".join(f"[v{i}][a{i}]" if audio else f"[v{i}]" for i in range(n))
+    parts.append(f"{inputs}concat=n={n}:v=1:a={1 if audio else 0}" + ("[v][a]" if audio else "[v]"))
+    maps = ["-map", "[v]"] + (["-map", "[a]"] if audio else [])
+    return run(["-i", str(src), "-filter_complex", ";".join(parts), *maps,
+                *H264, "-crf", "18", *AAC, str(dst)], dry_run)
+
+
+def volume(src, dst, gain=1.0, normalize=False, dry_run=False):
+    """Change loudness. gain: 1.5 = 50% louder, 0.5 = half. normalize: even out to -16 LUFS (speech/social)."""
+    af = "loudnorm=I=-16:TP=-1.5:LRA=11" if normalize else f"volume={gain}"
+    return run(["-i", str(src), "-af", af, "-c:v", "copy", *AAC, str(dst)], dry_run)
+
+
+def burn_captions(src, cues, dst, style=None, dry_run=False):
+    """Burn styled captions (a list of captions.Cue) into the video."""
+    style = style or captions.Style()
+    try:
+        w, h = video_size(src)
+    except Exception:
+        if not dry_run:
+            raise
+        w, h = 1080, 1920
+    with tempfile.NamedTemporaryFile("w", suffix=".ass", delete=False, encoding="utf-8") as f:
+        f.write(captions.to_ass(cues, style, w, h))
+        ass = f.name
+    path = Path(ass).as_posix().replace(":", r"\:")
+    return run(["-i", str(src), "-vf", f"ass='{path}'", *H264, "-crf", "20", "-c:a", "copy", str(dst)],
+               dry_run)

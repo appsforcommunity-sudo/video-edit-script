@@ -51,3 +51,8 @@ def duration(path: str | Path) -> float:
 
 def has_audio(path: str | Path) -> bool:
     return any(s.get("codec_type") == "audio" for s in probe(path)["streams"])
+
+
+def video_size(path: str | Path) -> tuple[int, int]:
+    v = next(s for s in probe(path)["streams"] if s["codec_type"] == "video")
+    return int(v["width"]), int(v["height"])

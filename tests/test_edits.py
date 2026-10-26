@@ -100,3 +100,56 @@ def test_thumbnail(media, tmp_path):
 def test_cli_dry_run(media, capsys):
     assert main(["--dry-run", "resize", str(media["clip"]), "-o", "x.mp4"]) == 0
     assert "ffmpeg" in capsys.readouterr().out
+
+
+def test_cut_keep(media, tmp_path):
+    out = tmp_path / "k.mp4"
+    edits.cut_segments(media["clip"], out, keep=[("0", "1"), ("2", "3.5")])
+    assert abs(duration(out) - 2.5) < 0.3 and has_audio(out)
+
+
+def test_cut_remove(media, tmp_path):
+    out = tmp_path / "rm.mp4"
+    edits.cut_segments(media["clip"], out, remove=[("1", "2")])
+    assert abs(duration(out) - 3) < 0.3
+
+
+def test_volume(media, tmp_path):
+    out = tmp_path / "v.mp4"
+    edits.volume(media["clip"], out, gain=0.5)
+    edits.volume(media["clip"], tmp_path / "n.mp4", normalize=True)
+    assert has_audio(out) and (tmp_path / "n.mp4").exists()
+
+
+def test_script_to_srt_roundtrip(tmp_path):
+    from vedit import captions
+    cues = captions.script_to_cues("Hello there\nSecond line is longer", 6)
+    assert cues[0].start == 0 and abs(cues[-1].end - 6) < 1e-6
+    captions.write_srt(cues, tmp_path / "s.srt")
+    back = captions.parse_srt(tmp_path / "s.srt")
+    assert [c.text for c in back] == ["Hello there", "Second line is longer"]
+
+
+def test_styled_captions_with_highlight(media, tmp_path):
+    from vedit import captions
+    cues = captions.script_to_cues("Join our team today\nGrow with us", 4)
+    style = captions.Style(color="#FFFF00", highlight="#FF0000", position="middle",
+                           upper=True, max_words=2, size=40)
+    out = tmp_path / "cap.mp4"
+    edits.burn_captions(media["clip"], cues, out, style)
+    assert _size(out) == (640, 360)
+    assert "&H0000FFFF" in captions.to_ass(cues, style, 640, 360)
+
+
+def test_cli_captions_from_script(media, tmp_path):
+    script = tmp_path / "script.txt"
+    script.write_text("First caption\nSecond caption\n")
+    out, srt = tmp_path / "c.mp4", tmp_path / "c.srt"
+    rc = main(["captions", str(media["clip"]), "--script", str(script), "-o", str(out),
+               "--srt-out", str(srt), "--position", "top", "--color", "#00FF00"])
+    assert rc == 0 and out.exists() and srt.exists()
+
+
+def test_bad_colour_is_clean_error(media, tmp_path):
+    assert main(["subs", str(media["clip"]), str(media["srt"]), "-o", str(tmp_path / "x.mp4"),
+                 "--color", "red"]) == 1

@@ -2,7 +2,7 @@
 
 Small Python scripts that wrap **FFmpeg** to automate the edits you do over and over: trimming, joining clips, reformatting for Reels/TikTok/Shorts, compressing, adding music, burning subtitles, watermarking, and batch processing a whole folder.
 
-No Python dependencies — just Python 3.9+ and FFmpeg.
+No Python dependencies — just Python 3.9+ and FFmpeg. (Automatic speech captions optionally use `faster-whisper`: `pip install -e .[captions]`.)
 
 ## Setup
 
@@ -36,7 +36,16 @@ vedit resize input/clip.mp4 --size 1280x720 --mode pad -o output/720.mp4
 vedit compress input/clip.mp4 --crf 28 --max-height 720 -o output/small.mp4
 vedit audio input/clip.mp4 -o output/voice.mp3
 vedit music input/clip.mp4 input/song.mp3 --volume 0.25 -o output/with_music.mp4
-vedit subs input/clip.mp4 input/captions.srt --font-size 28 -o output/captioned.mp4
+vedit subs input/clip.mp4 input/captions.srt --color "#FFFF00" --position middle -o output/captioned.mp4
+vedit cut input/clip.mp4 --keep 0-5 12-20 -o output/highlights.mp4     # keep + join ranges
+vedit cut input/clip.mp4 --remove 3-4.5 10-12 -o output/clean.mp4      # drop ranges
+vedit volume input/clip.mp4 --normalize -o output/loud.mp4              # or --gain 1.5
+vedit transcribe input/clip.mp4 --lang ms -o output/clip.srt            # speech -> .srt
+vedit script2srt input/script.txt input/clip.mp4 -o output/clip.srt     # your script -> .srt
+# one step: caption + style + burn in (speech, --script file, or --srt file)
+vedit captions input/clip.mp4 -o output/final.mp4 --lang en --max-words 3 --upper \
+      --highlight "#FFD400" --position middle
+vedit captions input/clip.mp4 -o output/final.mp4 --script input/script.txt --srt-out output/final.srt
 vedit watermark input/clip.mp4 input/logo.png --position top-right -o output/branded.mp4
 vedit speed input/clip.mp4 --factor 1.5 -o output/fast.mp4
 vedit thumb input/clip.mp4 --at 00:00:03 -o output/thumb.jpg
@@ -47,6 +56,15 @@ vedit batch compress input --crf 26
 ```
 
 Add `--dry-run` before any command to print the FFmpeg command without running it — handy for learning FFmpeg or tweaking it by hand.
+
+## Caption options
+
+Used by `captions` and `subs`: `--font`, `--font-size` (0 = auto), `--color`, `--outline-color`,
+`--highlight` (colour of the word being spoken), `--position bottom|middle|top`, `--max-words N`
+(a few words at a time, TikTok style), `--upper`, `--no-bold`, `--margin`. Colours are `#RRGGBB`.
+
+`--script` takes a text file with one caption per line; time is shared across the video by line
+length, so it is approximate. Transcribed captions use real word timings.
 
 ## Resize modes
 
@@ -72,6 +90,7 @@ edits.add_music("output/reel.mp4", "input/song.mp3", "output/final.mp4", music_v
 vedit/
   ffmpeg.py   # run/probe helpers
   edits.py    # one function per edit
+  captions.py # cues, styling, speech/script -> captions
   cli.py      # `vedit` command
 tests/        # generates tiny test clips and checks every edit
 input/        # put source media here (ignored by git)
