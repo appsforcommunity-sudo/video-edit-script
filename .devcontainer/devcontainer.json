@@ -1,0 +1,8 @@
+{
+  "name": "video-edit-scripts",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg && pip install -e . -r requirements-dev.txt",
+  "customizations": {
+    "vscode": { "extensions": ["ms-python.python"] }
+  }
+}

@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vedit"
+version = "0.1.0"
+description = "Small FFmpeg-powered scripts to automate common video edits"
+requires-python = ">=3.9"
+readme = "README.md"
+
+[project.scripts]
+vedit = "vedit.cli:main"
+
+[tool.setuptools]
+packages = ["vedit"]
