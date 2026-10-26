@@ -153,3 +153,71 @@ def test_cli_captions_from_script(media, tmp_path):
 def test_bad_colour_is_clean_error(media, tmp_path):
     assert main(["subs", str(media["clip"]), str(media["srt"]), "-o", str(tmp_path / "x.mp4"),
                  "--color", "red"]) == 1
+
+
+def _frame(path, t, out):
+    _ff("-ss", str(t), "-i", str(path), "-frames:v", "1", str(out))
+    return out.read_bytes()
+
+
+@pytest.mark.parametrize("kind", ["in", "out", "punch"])
+def test_zoom_keeps_size_and_changes_picture(media, tmp_path, kind):
+    out = tmp_path / f"z_{kind}.mp4"
+    edits.zoom(media["clip"], out, [(1, 3, kind, 1.5)])
+    assert _size(out) == (640, 360) and abs(duration(out) - 4) < 0.3
+    # mid-zoom frame differs from the original; a frame outside the range is untouched
+    mid = 2.0 if kind == "punch" else 2.9 if kind == "in" else 1.1
+    assert _frame(out, mid, tmp_path / "a.png") != _frame(media["clip"], mid, tmp_path / "b.png")
+
+
+def test_zoom_rejects_bad_type(media, tmp_path):
+    assert main(["zoom", str(media["clip"]), "-o", str(tmp_path / "x.mp4"), "--at", "1-2:spin:1.2"]) == 1
+
+
+def test_graphics_image_and_text(media, tmp_path):
+    from vedit import graphics
+    out = tmp_path / "g.mp4"
+    edits.add_graphics(
+        media["clip"], out,
+        images=[{"image": media["logo"], "at": "1-3", "position": "top-right", "scale": 0.3}],
+        texts=[graphics.TextGraphic("Join us", 1, 3, box="#000000")])
+    assert _size(out) == (640, 360) and abs(duration(out) - 4) < 0.3
+    assert _frame(out, 2, tmp_path / "a.png") != _frame(media["clip"], 2, tmp_path / "b.png")
+
+
+def test_mix_audio_bgm_and_sfx(media, tmp_path):
+    out = tmp_path / "mix.mp4"
+    edits.mix_audio(media["clip"], out, bgm=media["music"], sfx=[("builtin:whoosh", 1, 0.8),
+                                                                 (media["music"], 2.5, 0.5)])
+    assert has_audio(out) and abs(duration(out) - 4) < 0.3
+
+
+def test_mix_audio_sfx_only_and_unknown_builtin(media, tmp_path):
+    edits.mix_audio(media["clip"], tmp_path / "s.mp4", sfx=[("builtin:ding", 0.5, 1.0)])
+    with pytest.raises(ValueError):
+        edits.mix_audio(media["clip"], tmp_path / "x.mp4", sfx=[("builtin:nope", 0, 1)])
+
+
+def test_make_full_spec(media, tmp_path):
+    import json
+    spec = {
+        "input": str(media["clip"]), "output": str(tmp_path / "out" / "final.mp4"),
+        "cuts": {"remove": [["3", "3.5"]]},
+        "zooms": [{"at": "1-2", "type": "punch", "amount": 1.4}],
+        "audio": {"bgm": str(media["music"]), "sfx": [{"file": "builtin:pop", "at": 1}]},
+        "graphics": [{"image": str(media["logo"]), "at": "0.5-2", "position": "top-left"},
+                     {"text": "Hello", "at": "1-2"}],
+        "captions": {"srt": str(media["srt"]), "position": "bottom", "color": "#FFFF00"},
+    }
+    p = tmp_path / "spec.json"
+    p.write_text(json.dumps(spec))
+    assert main(["make", str(p)]) == 0
+    out = tmp_path / "out" / "final.mp4"
+    assert _size(out) == (640, 360) and has_audio(out) and abs(duration(out) - 3.5) < 0.3
+
+
+def test_make_empty_spec_is_clean_error(media, tmp_path):
+    import json
+    p = tmp_path / "e.json"
+    p.write_text(json.dumps({"input": str(media["clip"]), "output": str(tmp_path / "o.mp4")}))
+    assert main(["make", str(p)]) == 1

@@ -42,6 +42,10 @@ vedit cut input/clip.mp4 --remove 3-4.5 10-12 -o output/clean.mp4      # drop ra
 vedit volume input/clip.mp4 --normalize -o output/loud.mp4              # or --gain 1.5
 vedit transcribe input/clip.mp4 --lang ms -o output/clip.srt            # speech -> .srt
 vedit script2srt input/script.txt input/clip.mp4 -o output/clip.srt     # your script -> .srt
+vedit zoom input/clip.mp4 --at 1-3:punch:1.3 6-9:in:1.5 12-14:out:1.4 -o output/zoomed.mp4
+vedit graphics input/clip.mp4 --image input/logo.png@0-10 --text "JOIN US@1-3" --text-box "#E50914" -o output/gfx.mp4
+vedit bgm input/clip.mp4 --music input/song.mp3 --volume 0.2 --sfx builtin:whoosh@1 --sfx hit.wav@6:0.6 -o output/audio.mp4
+vedit make examples/spec.json                                           # everything in one go
 # one step: caption + style + burn in (speech, --script file, or --srt file)
 vedit captions input/clip.mp4 -o output/final.mp4 --lang en --max-words 3 --upper \
       --highlight "#FFD400" --position middle
@@ -56,6 +60,19 @@ vedit batch compress input --crf 26
 ```
 
 Add `--dry-run` before any command to print the FFmpeg command without running it — handy for learning FFmpeg or tweaking it by hand.
+
+## Zoom, graphics, BGM and SFX
+
+- **Zoom** (`--at START-END:TYPE:AMOUNT`, times in seconds): `punch` eases in, holds, eases out;
+  `in` zooms gradually across the range then cuts back; `out` starts zoomed and pulls back.
+  `--focus 0.5,0.3` aims the zoom at a point (x,y as fractions of the frame; default centre).
+- **Graphics**: images (logo, sticker, lower-third PNG) and text with fade in/out. Text can have a
+  coloured box (`--text-box`).
+- **BGM**: looped, faded in/out, and automatically lowered while someone speaks (`--no-duck` to
+  turn off). **SFX** are placed at exact seconds; use your own files or `builtin:whoosh`,
+  `builtin:pop`, `builtin:ding`, `builtin:boom`.
+- **`vedit make spec.json`** runs cuts, zooms, audio, graphics, then captions in that order (see
+  `examples/spec.json`). Captions go last so they are never zoomed or covered.
 
 ## Caption options
 
@@ -91,6 +108,8 @@ vedit/
   ffmpeg.py   # run/probe helpers
   edits.py    # one function per edit
   captions.py # cues, styling, speech/script -> captions
+  graphics.py # timed text graphics
+  project.py  # `vedit make` JSON spec runner
   cli.py      # `vedit` command
 tests/        # generates tiny test clips and checks every edit
 input/        # put source media here (ignored by git)
